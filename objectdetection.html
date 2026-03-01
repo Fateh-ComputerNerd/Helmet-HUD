@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Iron Man HUD - LIVE Object Detection</title>
+    <style>
+        * { margin: 0; padding: 0; overflow: hidden; }
+        body { background: #000; font-family: 'Courier New'; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud { position: absolute; color: #00FF00; font-size: 24px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }
+        #status { top: 20px; left: 20px; }
+        #fps { top: 20px; right: 20px; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div id="status" class="hud">LOADING AI MODEL...</div>
+        <div id="fps" class="hud">FPS: --</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@latest"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        const fpsEl = document.getElementById('fps');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        let model;
+        let lastTime = 0;
+        let fpsCounter = 0;
+        let detectEnabled = false;
+
+        // Load REAL ML model (COCO-SSD - 80 object classes)
+        async function loadModel() {
+            status.textContent = 'LOADING COCO-SSD MODEL...';
+            model = await cocoSsd.load();
+            status.textContent = 'MODEL READY - HUD ONLINE';
+            detectEnabled = true;
+            requestAnimationFrame(detectLoop);
+        }
+
+        // Start back camera
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: {ideal: 1280}, height: {ideal: 720} }
+        }).then(stream => {
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                loadModel();
+            };
+        }).catch(err => {
+            status.textContent = 'CAMERA ERROR: ' + err.message;
+        });
+
+        // Live detection loop (15-30 FPS)
+        async function detectLoop(currentTime = 0) {
+            if (currentTime - lastTime >= 66) { // ~15fps for mobile
+                fpsCounter++;
+                if (fpsCounter % 15 === 0) {
+                    fpsEl.textContent = `FPS: ${Math.round(1000/(currentTime-lastTime))}`;
+                }
+                lastTime = currentTime;
+                
+                if (detectEnabled && model) {
+                    await detectObjects();
+                }
+            }
+            requestAnimationFrame(detectLoop);
+        }
+
+        // REAL ML object detection
+        async function detectObjects() {
+            const predictions = await model.detect(video);
+            
+            // Clear canvas
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Draw LIVE detections
+            predictions.forEach(prediction => {
+                const x = prediction.bbox[0];
+                const y = prediction.bbox[1];
+                const width = prediction.bbox[2];
+                const height = prediction.bbox[3];
+                
+                // Iron Man CYAN boxes
+                ctx.strokeStyle = '#00FFFF';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(x, y, width, height);
+                
+                // Confidence labels
+                ctx.fillStyle = '#00FFFF';
+                ctx.font = 'bold 28px Courier New';
+                ctx.textAlign = 'left';
+                ctx.fillText(
+                    `${prediction.class} ${(prediction.score*100).toFixed(0)}%`, 
+                    x, y - 10
+                );
+            });
+            ctx.restore();
+        }
+
+        // VR fullscreen optimization
+        document.addEventListener('keydown', e => {
+            if (e.key === 'f' || e.key === 'F11') {
+                document.documentElement.requestFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
