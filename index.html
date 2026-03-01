@@ -7,14 +7,28 @@
     <style>
         * { margin: 0; padding: 0; overflow: hidden; }
         body { background: black; font-family: 'Courier New'; }
-        #video { width: 200vw; height: 100vh; object-fit: cover; }
-        .hud { position: absolute; color: #00FF00; font-size: 24px; background: rgba(0,255,0,0.2); padding: 10px; border-radius: 5px; top: 20px; left: 20px; width: 45vw; }
-        .hud-right { left: 55vw; }
-        .detection { position: absolute; border: 3px solid #00FF00; background: rgba(0,255,0,0.3); font-size: 20px; padding: 5px; }
+        #video { 
+            width: 200vw; height: 100vh; 
+            object-fit: cover; 
+            transform: scaleX(2); /* DOUBLE WIDTH FOR SBS */
+        }
+        .hud { 
+            position: absolute; color: #00FF00; font-size: 24px; 
+            background: rgba(0,255,0,0.3); padding: 10px; border-radius: 5px; 
+            top: 20px; left: 20px; width: 45vw; 
+        }
+        .hud-right { left: 52vw; }
+        .detection { 
+            position: absolute; border: 3px solid #00FF00; 
+            background: rgba(0,255,0,0.4); font-size: 18px; padding: 3px; 
+            transform: scaleX(2); /* Boxes also SBS */
+        }
     </style>
 </head>
 <body>
     <video id="video" autoplay muted playsinline></video>
+    <div class="hud">🟢 LOADING AI...</div>
+    <div class="hud hud-right">🔄 INITIALIZING...</div>
     
     <script>
         let model;
@@ -22,7 +36,8 @@
         
         async function init() {
             model = await cocoSsd.load();
-            console.log('Iron Man AI loaded!');
+            document.querySelector('.hud').innerHTML = '🟢 AI ONLINE';
+            document.querySelector('.hud-right').innerHTML = '📡 LIVE TRACKING';
             detectFrame();
         }
         
@@ -35,12 +50,11 @@
         }
         
         function displayDetections(predictions) {
-            // Clear previous boxes
             document.querySelectorAll('.detection').forEach(el => el.remove());
             
-            predictions.forEach(pred => {
+            predictions.slice(0,5).forEach(pred => { // Top 5 detections
                 const score = (pred.score * 100).toFixed(0);
-                if (score > 50) { // Only show confident detections
+                if (score > 60) {
                     const x = (pred.bbox[0] / video.videoWidth) * 100;
                     const y = (pred.bbox[1] / video.videoHeight) * 100;
                     const w = (pred.bbox[2] / video.videoWidth) * 100;
@@ -52,25 +66,27 @@
                     box.style.top = y + '%';
                     box.style.width = w + '%';
                     box.style.height = h + '%';
-                    box.innerHTML = `${pred.class} ${score}%`;
+                    box.innerHTML = `${pred.class}<br>${score}%`;
                     document.body.appendChild(box);
                 }
             });
             
-            // Update HUD with top detection
             if (predictions.length > 0) {
                 const top = predictions[0];
                 document.querySelector('.hud').innerHTML = 
-                    `🟢 AI ONLINE<br>🎯 ${top.class} ${(top.score*100).toFixed(0)}%<br>🔒 TARGET LOCKED`;
+                    `🎯 ${top.class.toUpperCase()}<br>${(top.score*100).toFixed(0)}% LOCKED`;
             }
         }
         
-        navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}})
+        navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment', width: 1280, height: 720}})
             .then(stream => {
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
-                    init();
+                    video.play();
+                    setTimeout(init, 1000);
                 };
+            }).catch(e => {
+                document.body.innerHTML = '<div style="color:#ff4444;font-size:32px;padding:50px;text-align:center">ALLOW CAMERA PERMISSION FOR VR HUD</div>';
             });
     </script>
 </body>
