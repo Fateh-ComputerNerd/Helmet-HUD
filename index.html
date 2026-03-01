@@ -1,67 +1,91 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Iron Man VR Object Detection</title>
+    <title>Iron Man VR HUD - Fixed Camera</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
         * { margin: 0; padding: 0; overflow: hidden; }
         body { background: black; font-family: 'Courier New'; }
         #video { 
-            width: 100vw; height: 100vh; 
-            object-fit: cover; 
-            object-position: center;
-        }
-        .vr-container {
-            width: 200vw; height: 100vh;
-            position: absolute; top: 0; left: 0;
-            overflow: hidden;
+            width: 200vw; height: 100vh; 
+            object-fit: cover; object-position: center;
         }
         .hud { 
             position: absolute; color: #00FF00; font-size: 24px; 
             background: rgba(0,255,0,0.3); padding: 10px; border-radius: 5px; 
-            top: 20px; left: 20px; width: 45vw; z-index: 100;
+            top: 20px; left: 20px; width: 45vw;
         }
-        .hud-right { left: calc(50vw + 20px); }
+        .hud-right { left: 52vw; }
         .detection { 
             position: absolute; border: 3px solid #00FF00; 
-            background: rgba(0,255,0,0.4); font-size: 18px; padding: 3px; 
-            font-weight: bold; z-index: 50;
+            background: rgba(0,255,0,0.4); font-size: 18px; padding: 3px;
         }
     </style>
 </head>
 <body>
-    <div class="vr-container">
-        <video id="video" autoplay muted playsinline></video>
-        <div class="hud">🟢 LOADING AI...</div>
-        <div class="hud hud-right">🔄 VR READY</div>
-    </div>
+    <video id="video" autoplay muted playsinline></video>
+    <div class="hud">🔄 Starting camera...</div>
+    <div class="hud hud-right">👁️ SBS VR Mode</div>
     
     <script>
         let model;
-        let video = document.getUserMedia('video');
+        const video = document.getElementById('video');
         
-        async function init() {
-            model = await cocoSsd.load();
-            document.querySelector('.hud').innerHTML = '🟢 AI ONLINE';
-            document.querySelector('.hud-right').innerHTML = '👁️ SBS VR MODE';
-            detectFrame();
+        // Fix 1: Multiple camera attempts
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            }).then(stream => {
+                video.srcObject = stream;
+                video.onloadeddata = () => {
+                    console.log('Camera ready');
+                    loadModel();
+                };
+            }).catch(err => {
+                // Try front camera if back fails
+                navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadeddata = loadModel;
+                }).catch(() => {
+                    document.querySelector('.hud').innerHTML = '❌ Camera permission denied';
+                });
+            });
         }
         
-        async function detectFrame() {
-            if (model && video.videoWidth > 0) {
-                const predictions = await model.detect(video);
-                displayDetections(predictions);
+        async function loadModel() {
+            try {
+                document.querySelector('.hud').innerHTML = '🟢 Loading AI...';
+                model = await cocoSsd.load();
+                document.querySelector('.hud').innerHTML = '🎯 AI Ready!';
+                detectLoop();
+            } catch(e) {
+                document.querySelector('.hud').innerHTML = '⚠️ Using basic HUD';
+                basicHUD();
             }
-            requestAnimationFrame(detectFrame);
         }
         
-        function displayDetections(predictions) {
-            document.querySelectorAll('.detection').forEach(el => el.remove());
+        async function detectLoop() {
+            if (model && !video.paused) {
+                try {
+                    const predictions = await model.detect(video);
+                    updateDetections(predictions);
+                } catch(e) {}
+            }
+            requestAnimationFrame(detectLoop);
+        }
+        
+        function updateDetections(predictions) {
+            // Clear old boxes
+            document.querySelectorAll('.detection').forEach(d => d.remove());
             
-            predictions.slice(0,3).forEach(pred => {
-                const score = (pred.score * 100).toFixed(0);
-                if (score > 50) {
+            predictions.slice(0, 3).forEach(pred => {
+                if (pred.score > 0.5) {
                     const x = (pred.bbox[0] / video.videoWidth) * 100;
                     const y = (pred.bbox[1] / video.videoHeight) * 100;
                     const w = (pred.bbox[2] / video.videoWidth) * 100;
@@ -69,33 +93,23 @@
                     
                     const box = document.createElement('div');
                     box.className = 'detection';
-                    box.style.left = x + '%';
-                    box.style.top = y + '%';
-                    box.style.width = w + '%';
-                    box.style.height = h + '%';
-                    box.innerHTML = `${pred.class}<br>${score}%`;
+                    box.style.left = `${x}%`;
+                    box.style.top = `${y}%`;
+                    box.style.width = `${w}%`;
+                    box.style.height = `${h}%`;
+                    box.innerHTML = `${pred.class}<br>${Math.round(pred.score*100)}%`;
                     document.body.appendChild(box);
                 }
             });
         }
         
-        navigator.mediaDevices.getUserMedia({
-            video: { 
-                facingMode: 'environment', 
-                width: {ideal: 1280}, 
-                height: {ideal: 720},
-                aspectRatio: 16/9
-            }
-        }).then(stream => {
-            video.srcObject = stream;
-            video.onloadedmetadata = () => {
-                video.play();
-                setTimeout(init, 500);
-            };
-        }).catch(e => {
-            document.body.innerHTML = '<div style="color:#ff4444;font-size:32px;padding:50px;text-align:center">ALLOW CAMERA FOR IRON MAN VR</div>';
-        });
+        function basicHUD() {
+            document.querySelector('.hud').innerHTML = '🟢 HUD ONLINE<br>📡 SIGNAL 100%';
+            requestAnimationFrame(basicHUD);
+        }
+        
+        // Start everything
+        startCamera();
     </script>
 </body>
 </html>
-
